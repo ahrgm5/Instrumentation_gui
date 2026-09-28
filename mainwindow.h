@@ -2,9 +2,11 @@
 
 #include <QMainWindow>
 #include <QPushButton>
-#include <QWidget>
+#include <QTimer>
+#include <QElapsedTimer>
 #include <memory>
 #include <ic4/ic4.h>
+#include "remoteControl.hpp"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -19,6 +21,7 @@ public:
 
 private slots:
     void toggleStreaming();
+    void pollControllerInput();
 
 private:
     void initCamera();
@@ -31,4 +34,11 @@ private:
     ic4::Grabber m_grabber;
     std::shared_ptr<ic4::Display> m_ic4Display;
     bool m_isStreaming;
+
+    // Xbox Controller & Throttling
+    RemoteControl m_remoteController;
+    QTimer *m_controllerTimer;
+    QElapsedTimer m_inputThrottleTimer;
+    QElapsedTimer m_reconnectElapsedTimer; // <-- Added to throttle hot-plug reconnection attempts
+    QString m_lastLoggedInputs;
 };
