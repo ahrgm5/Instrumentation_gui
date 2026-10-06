@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "zaber.hpp"
+#include "velmex.hpp"
 #include <QMessageBox>
 #include <QDebug>
 #include <QTime>
@@ -7,7 +9,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <memory>
-#include <unordered_map>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow), m_isStreaming(false)
@@ -31,27 +32,28 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_btnToggleStream, &QPushButton::clicked, this, &MainWindow::toggleStreaming);
 
+    // --- Connect Remote Target Combo Box ---
+    connect(ui->comboRemoteTarget, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onControllerTargetChanged);
+
     // --- Connect Execution Button ---
     connect(ui->btnExecuteSequence, &QPushButton::clicked, this, &MainWindow::onExecuteSequenceClicked);
 
-    // --- Initialize Camera (Non-blocking if not plugged in yet) ---
+    // --- Initialize Camera ---
     initCamera();
 
-    // --- Initialize Camera Hot-Plug Monitor Timer ---
+    // --- Timers ---
     m_cameraCheckTimer = new QTimer(this);
     connect(m_cameraCheckTimer, &QTimer::timeout, this, &MainWindow::checkCameraConnection);
     m_cameraCheckTimer->start(1000);
 
-    // --- Initialize Device Connection & Reconnect Timer ---
     m_deviceCheckTimer = new QTimer(this);
     connect(m_deviceCheckTimer, &QTimer::timeout, this, &MainWindow::checkDeviceConnections);
     m_deviceCheckTimer->start(2000);
 
-    // --- Initialize Xbox Controller & Timers ---
+    // --- Initialize Controller ---
     if (m_remoteController.initialize()) {
         qDebug() << "Connected to controller:" << QString::fromStdString(m_remoteController.getControllerName());
-    } else {
-        qDebug() << "Warning: No Xbox controller detected on startup.";
     }
 
     m_inputThrottleTimer.start();
@@ -61,7 +63,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_controllerTimer, &QTimer::timeout, this, &MainWindow::pollControllerInput);
     m_controllerTimer->start(16);
 
-    // --- Setup Station Selection Dropdown (Scan Directory for .ini Files) ---
+    // --- Setup Station Selection Dropdown ---
     connect(ui->comboStation, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onStationSelected);
 
     ui->comboStation->blockSignals(true);
@@ -70,7 +72,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     QString configDirectoryPath = "C:/Users/aron.rezene";
     QDir configDir(configDirectoryPath);
-
     QStringList filters;
     filters << "*.ini";
     QFileInfoList iniFiles = configDir.entryInfoList(filters, QDir::Files);
@@ -88,17 +89,13 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
-    if (m_controllerTimer) {
-        m_controllerTimer->stop();
-    }
-    if (m_cameraCheckTimer) {
-        m_cameraCheckTimer->stop();
-    }
-    if (m_deviceCheckTimer) {
-        m_deviceCheckTimer->stop();
-    }
+    if (m_controllerTimer) m_controllerTimer->stop();
+    if (m_cameraCheckTimer) m_cameraCheckTimer->stop();
+    if (m_deviceCheckTimer) m_deviceCheckTimer->stop();
     if (m_isStreaming) {
-        m_grabber.streamStop();
+        try {
+            m_grabber.streamStop();
+        } catch (...) {}
     }
     delete ui;
 }
@@ -114,6 +111,8 @@ void MainWindow::onStationSelected(int index)
         ui->comboSequence->clear();
         m_stationDevices.clear();
         m_deviceResourceStrings.clear();
+        m_remoteController.clearTargetMotor();
+        updateControllerTargetCombo();
     }
 }
 
@@ -131,7 +130,15 @@ void MainWindow::loadStationConfig(const QString& iniFilePath)
 
     for (const QString& devName : deviceNames) {
         QString resourceString = settings.value(devName).toString();
-        auto instrument = std::make_shared<Instrument>(m_vrm.handle());
+        std::shared_ptr<Instrument> instrument;
+
+        if (devName.contains("Zaber", Qt::CaseInsensitive)) {
+            instrument = std::make_shared<Zaber>(m_vrm.handle());
+        } else if (devName.contains("Velmex", Qt::CaseInsensitive)) {
+            instrument = std::make_shared<VelmexVXM>(m_vrm.handle());
+        } else {
+            instrument = std::make_shared<Instrument>(m_vrm.handle());
+        }
 
         m_deviceResourceStrings[devName] = resourceString;
 
@@ -163,176 +170,52 @@ void MainWindow::loadStationConfig(const QString& iniFilePath)
 
     settings.beginGroup("Products");
     QStringList generalKeys = settings.childKeys();
-
     for (const QString& key : generalKeys) {
-        QString sequenceDisplayName = settings.value(key).toString();
-        ui->comboSequence->addItem(sequenceDisplayName, key);
+        ui->comboSequence->addItem(settings.value(key).toString(), key);
     }
     settings.endGroup();
 
     ui->treeWidget->expandAll();
+    updateControllerTargetCombo();
 }
 
-void MainWindow::checkDeviceConnections()
+void MainWindow::updateControllerTargetCombo()
 {
-    if (m_stationDevices.empty()) return;
+    ui->comboRemoteTarget->blockSignals(true);
+    ui->comboRemoteTarget->clear();
+    ui->comboRemoteTarget->addItem("-- Select Target Device --", "");
 
-    for (int i = 0; i < ui->treeWidget->topLevelItemCount(); ++i) {
-        QTreeWidgetItem* item = ui->treeWidget->topLevelItem(i);
-        if (!item) continue;
-
-        QString devName = item->text(0);
-
-        if (m_stationDevices.count(devName)) {
-            auto instrument = m_stationDevices[devName];
-
-            bool isConnected = false;
-
-            if (instrument && instrument->isOpen()) {
-                try {
-                    std::string idnResponse = instrument->query("*IDN?", 500);
-                    isConnected = !idnResponse.empty();
-                } catch (...) {
-                    isConnected = false;
-                }
-            }
-
-            if (!isConnected && instrument) {
-                QString resourceString = m_deviceResourceStrings[devName];
-                if (!resourceString.isEmpty()) {
-                    try {
-                        isConnected = instrument->open(resourceString.toStdString(), 500);
-                    } catch (...) {
-                        isConnected = false;
-                    }
-                }
-            }
-
-            QString statusText = isConnected ? "● Connected" : "● Disconnected";
-            QColor statusColor = isConnected ? QColor("#2ecc71") : QColor("#e74c3c");
-
-            if (item->text(1) != statusText) {
-                item->setText(1, statusText);
-                item->setForeground(1, QBrush(statusColor));
-
-                if (isConnected) {
-                    qDebug() << "Device connected dynamically:" << devName;
-                } else {
-                    qDebug() << "Device disconnected dynamically:" << devName;
-                }
-            }
+    for (const auto& [devName, instrument] : m_stationDevices) {
+        if (devName.contains("Zaber", Qt::CaseInsensitive)) {
+            ui->comboRemoteTarget->addItem("Zaber Stage (" + devName + ")", devName);
+        } else if (devName.contains("Velmex", Qt::CaseInsensitive)) {
+            ui->comboRemoteTarget->addItem("Velmex Stage (" + devName + ")", devName);
+        } else if (devName.contains("Laser", Qt::CaseInsensitive) || devName.contains("Welder", Qt::CaseInsensitive)) {
+            ui->comboRemoteTarget->addItem("Laser Welder (" + devName + ")", devName);
         }
     }
+
+    ui->comboRemoteTarget->blockSignals(false);
 }
 
-void MainWindow::onExecuteSequenceClicked()
+void MainWindow::onControllerTargetChanged(int index)
 {
-    int index = ui->comboSequence->currentIndex();
-    if (index < 0) return;
+    QString devName = ui->comboRemoteTarget->itemData(index).toString();
 
-    QString sequenceKey = ui->comboSequence->itemData(index).toString();
-    QString sequenceDisplayName = ui->comboSequence->currentText();
-
-    if (sequenceKey.isEmpty()) {
-        QMessageBox::warning(this, "Select Sequence", "Please select a valid sequence.");
+    if (devName.isEmpty() || !m_stationDevices.count(devName)) {
+        m_remoteController.clearTargetMotor();
+        qDebug() << "Cleared remote controller target.";
         return;
     }
 
-    qDebug() << "Sequence execution requested:" << sequenceDisplayName << "(" << sequenceKey << ")";
+    auto instrument = m_stationDevices[devName];
 
-    emit executeSequenceRequested(sequenceKey, sequenceDisplayName);
-}
-
-void MainWindow::initCamera()
-{
-    auto devices = ic4::DeviceEnum::enumDevices();
-    if (devices.empty()) {
-        m_btnToggleStream->setEnabled(true);
-        return;
-    }
-
-    ic4::Error err;
-    m_grabber.deviceOpen(devices[0], err);
-}
-
-void MainWindow::checkCameraConnection()
-{
-    auto devices = ic4::DeviceEnum::enumDevices();
-
-    if (m_grabber.isDeviceOpen()) {
-        bool deviceStillPresent = false;
-        auto currentSerial = m_grabber.deviceInfo().serial();
-        for (const auto& dev : devices) {
-            if (dev.serial() == currentSerial) {
-                deviceStillPresent = true;
-                break;
-            }
-        }
-
-        if (!deviceStillPresent) {
-            qDebug() << "Camera disconnected dynamically.";
-            if (m_isStreaming) {
-                m_grabber.streamStop();
-                m_isStreaming = false;
-                m_ic4Display.reset();
-                m_btnToggleStream->setText("Start Stream");
-                m_btnToggleStream->setStyleSheet("QPushButton { background-color: #2ecc71; color: white; font-weight: bold; border-radius: 4px; }");
-            }
-            m_grabber.deviceClose();
-        }
-    } else {
-        if (!devices.empty()) {
-            ic4::Error err;
-            if (m_grabber.deviceOpen(devices[0], err)) {
-                qDebug() << "Camera reconnected and recognized automatically:" << QString::fromStdString(devices[0].modelName());
-            }
-        }
-    }
-}
-
-void MainWindow::toggleStreaming()
-{
-    ic4::Error err;
-
-    if (!m_isStreaming) {
-        if (!m_grabber.isDeviceOpen()) {
-            auto devices = ic4::DeviceEnum::enumDevices();
-            if (devices.empty()) {
-                QMessageBox::warning(this, "Camera Error", "No camera detected. Please plug in the camera and try again.");
-                return;
-            }
-            if (!m_grabber.deviceOpen(devices[0], err)) {
-                QMessageBox::critical(this, "Camera Error", QString("Failed to open camera: %1").arg(QString::fromStdString(err.message())));
-                return;
-            }
-        }
-
-#if defined(Q_OS_WIN)
-        HWND hwnd = reinterpret_cast<HWND>(m_videoContainer->winId());
-        m_ic4Display = ic4::Display::create(ic4::DisplayType::Default, hwnd, err);
-#else
-        m_ic4Display = ic4::Display::create(ic4::DisplayType::Default, nullptr, err);
-#endif
-
-        if (!m_ic4Display) {
-            QMessageBox::critical(this, "Display Error", QString("Failed to create IC4 Display: %1").arg(QString::fromStdString(err.message())));
-            return;
-        }
-
-        if (m_grabber.streamSetup(m_ic4Display, static_cast<ic4::StreamSetupOption>(0), err)) {
-            m_isStreaming = true;
-            m_btnToggleStream->setText("Stop Stream");
-            m_btnToggleStream->setStyleSheet("QPushButton { background-color: #e74c3c; color: white; font-weight: bold; border-radius: 4px; }");
-        } else {
-            QMessageBox::critical(this, "Stream Error", QString("Failed to start stream: %1").arg(QString::fromStdString(err.message())));
-            m_ic4Display.reset();
-        }
-    } else {
-        m_grabber.streamStop();
-        m_isStreaming = false;
-        m_btnToggleStream->setText("Start Stream");
-        m_btnToggleStream->setStyleSheet("QPushButton { background-color: #2ecc71; color: white; font-weight: bold; border-radius: 4px; }");
-        m_ic4Display.reset();
+    if (auto zaberInst = std::dynamic_pointer_cast<Zaber>(instrument)) {
+        m_remoteController.bindZaber(zaberInst);
+        qDebug() << "Remote controller targeting:" << devName << "(Zaber)";
+    } else if (auto velmexInst = std::dynamic_pointer_cast<VelmexVXM>(instrument)) {
+        m_remoteController.bindVelmex(velmexInst);
+        qDebug() << "Remote controller targeting:" << devName << "(Velmex)";
     }
 }
 
@@ -341,7 +224,8 @@ void MainWindow::pollControllerInput()
     m_remoteController.pollEvents();
 
     if (!m_remoteController.isConnected()) {
-        ui->lblRemoteStatus->setText("Remote status: <span style='color: #e74c3c; font-size: 14pt;'>&#9679;</span> Disconnected");
+        ui->lblRemoteStatus->setText("<span style='color: #e74c3c; font-size: 16pt;'>&#9679;</span>");
+        ui->comboRemoteTarget->setEnabled(false);
 
         if (m_reconnectElapsedTimer.hasExpired(1000)) {
             if (m_remoteController.initialize()) {
@@ -352,7 +236,12 @@ void MainWindow::pollControllerInput()
         return;
     }
 
-    ui->lblRemoteStatus->setText("Remote status: <span style='color: #2ecc71; font-size: 14pt;'>&#9679;</span> Connected");
+    ui->lblRemoteStatus->setText("<span style='color: #2ecc71; font-size: 16pt;'>&#9679;</span>");
+    ui->comboRemoteTarget->setEnabled(true);
+
+    if (m_inputThrottleTimer.hasExpired(150)) {
+        m_remoteController.processMotionCommands(200);
+    }
 
     struct ButtonNamePair {
         SDL_GamepadButton button;
@@ -402,7 +291,6 @@ void MainWindow::pollControllerInput()
                 .arg(currentInputStr);
 
             ui->textControllerStream->append(timestampedStream);
-
             QTextCursor cursor = ui->textControllerStream->textCursor();
             cursor.movePosition(QTextCursor::End);
             ui->textControllerStream->setTextCursor(cursor);
@@ -413,4 +301,135 @@ void MainWindow::pollControllerInput()
     } else {
         m_lastLoggedInputs.clear();
     }
+}
+
+void MainWindow::initCamera()
+{
+    try {
+        auto devList = ic4::DeviceEnum::enumDevices();
+        if (devList.empty()) {
+            return;
+        }
+
+        m_grabber.deviceOpen(devList.front());
+
+        HWND hwnd = reinterpret_cast<HWND>(m_videoContainer->winId());
+        ic4::Error err;
+
+        m_ic4Display = ic4::Display::create(
+            static_cast<ic4::DisplayType>(0),
+            reinterpret_cast<ic4::WindowHandle>(hwnd),
+            err
+            );
+
+        if (m_ic4Display) {
+            m_grabber.streamSetup(m_ic4Display);
+            m_isStreaming = true;
+            m_btnToggleStream->setText("Stop Stream");
+            m_btnToggleStream->setStyleSheet("QPushButton { background-color: #e74c3c; color: white; font-weight: bold; border-radius: 4px; }");
+        }
+    } catch (const std::exception& ex) {
+        qDebug() << "Camera initialization failed:" << ex.what();
+    }
+}
+
+void MainWindow::toggleStreaming()
+{
+    if (!m_grabber.isDeviceOpen()) {
+        try {
+            initCamera();
+        } catch (...) {}
+        return;
+    }
+
+    if (m_isStreaming) {
+        try {
+            m_grabber.streamStop();
+        } catch (...) {}
+        m_isStreaming = false;
+        m_btnToggleStream->setText("Start Stream");
+        m_btnToggleStream->setStyleSheet("QPushButton { background-color: #2ecc71; color: white; font-weight: bold; border-radius: 4px; }");
+    } else {
+        if (m_ic4Display) {
+            try {
+                m_grabber.streamSetup(m_ic4Display);
+                m_isStreaming = true;
+                m_btnToggleStream->setText("Stop Stream");
+                m_btnToggleStream->setStyleSheet("QPushButton { background-color: #e74c3c; color: white; font-weight: bold; border-radius: 4px; }");
+            } catch (...) {}
+        }
+    }
+}
+
+void MainWindow::checkCameraConnection()
+{
+    bool currentlyOpen = m_grabber.isDeviceOpen();
+
+    if (!currentlyOpen) {
+        auto devList = ic4::DeviceEnum::enumDevices();
+        if (!devList.empty()) {
+            try {
+                m_grabber.deviceOpen(devList.front());
+                HWND hwnd = reinterpret_cast<HWND>(m_videoContainer->winId());
+                ic4::Error err;
+
+                m_ic4Display = ic4::Display::create(
+                    static_cast<ic4::DisplayType>(0),
+                    reinterpret_cast<ic4::WindowHandle>(hwnd),
+                    err
+                    );
+
+                if (m_ic4Display) {
+                    m_grabber.streamSetup(m_ic4Display);
+                    m_isStreaming = true;
+                    m_btnToggleStream->setText("Stop Stream");
+                    m_btnToggleStream->setStyleSheet("QPushButton { background-color: #e74c3c; color: white; font-weight: bold; border-radius: 4px; }");
+                }
+            } catch (...) {}
+        }
+    }
+}
+
+void MainWindow::checkDeviceConnections()
+{
+    for (int i = 0; i < ui->treeWidget->topLevelItemCount(); ++i) {
+        QTreeWidgetItem* topItem = ui->treeWidget->topLevelItem(i);
+        QString devName = topItem->text(0);
+
+        if (m_stationDevices.count(devName)) {
+            auto dev = m_stationDevices[devName];
+            QString resStr = m_deviceResourceStrings[devName];
+
+            bool currentlyConnected = dev->isOpen();
+
+            if (!currentlyConnected) {
+                try {
+                    currentlyConnected = dev->open(resStr.toStdString(), 1000);
+                } catch (...) {
+                    currentlyConnected = false;
+                }
+            }
+
+            if (currentlyConnected) {
+                topItem->setText(1, "● Connected");
+                topItem->setForeground(1, QBrush(QColor("#2ecc71")));
+            } else {
+                topItem->setText(1, "● Disconnected");
+                topItem->setForeground(1, QBrush(QColor("#e74c3c")));
+            }
+        }
+    }
+}
+
+void MainWindow::onExecuteSequenceClicked()
+{
+    QString seqKey = ui->comboSequence->currentData().toString();
+    QString seqText = ui->comboSequence->currentText();
+
+    if (seqKey.isEmpty()) {
+        QMessageBox::warning(this, "No Sequence Selected", "Please select a product sequence before executing.");
+        return;
+    }
+
+    emit executeSequenceRequested(seqKey, seqText);
 }

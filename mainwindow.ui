@@ -137,16 +137,31 @@
              <number>8</number>
             </property>
             <item>
-             <widget class="QLabel" name="lblRemoteStatus">
-              <property name="font">
-               <font>
-                <bold>true</bold>
-               </font>
+             <layout class="QHBoxLayout" name="horizontalLayout_RemoteHeader">
+              <property name="spacing">
+               <number>8</number>
               </property>
-              <property name="text">
-               <string>Remote status: Disconnected</string>
-              </property>
-             </widget>
+              <item>
+               <widget class="QLabel" name="lblRemoteStatus">
+                <property name="text">
+                 <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; color:#e74c3c; font-size:16pt;&quot;&gt;&amp;#9679;&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QComboBox" name="comboRemoteTarget">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+               </widget>
+              </item>
+             </layout>
             </item>
             <item>
              <widget class="QTextEdit" name="textControllerStream">

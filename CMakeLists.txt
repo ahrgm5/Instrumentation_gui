@@ -63,6 +63,7 @@ set(PROJECT_SOURCES
     include/arroyo.hpp
     include/remoteControl.hpp
     include/zaber.hpp
+    include/velmex.hpp
     include/ldc.hpp
 
 
@@ -76,7 +77,9 @@ set(PROJECT_SOURCES
     src/arroyo.cpp
     src/remoteControl.cpp
     src/zaber.cpp
+    src/velmex.cpp
     src/ldc.cpp
+
 
 
 

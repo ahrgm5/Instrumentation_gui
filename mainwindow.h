@@ -2,6 +2,8 @@
 
 #include <QMainWindow>
 #include <QPushButton>
+#include <QComboBox>
+#include <QLabel>
 #include <QTimer>
 #include <QElapsedTimer>
 #include <memory>
@@ -33,9 +35,11 @@ private slots:
     void checkDeviceConnections();
     void loadStationConfig(const QString& iniFilePath);
     void onExecuteSequenceClicked();
+    void onControllerTargetChanged(int index);
 
 private:
     void initCamera();
+    void updateControllerTargetCombo();
 
     Ui::MainWindow *ui;
     QWidget *m_videoContainer;

@@ -59,7 +59,7 @@ void RemoteControl::pollEvents() {
         case SDL_EVENT_GAMEPAD_AXIS_MOTION:
             if (std::abs(event.gaxis.value) > 8000) {
                 std::cout << "Axis " << static_cast<int>(event.gaxis.axis)
-                    << " moved to: " << event.gaxis.value << std::endl;
+                << " moved to: " << event.gaxis.value << std::endl;
             }
             break;
 
@@ -99,4 +99,71 @@ Sint16 RemoteControl::getAxisValue(SDL_GamepadAxis axis) const {
         return SDL_GetGamepadAxis(controller, axis);
     }
     return 0;
+}
+
+// --- Target Motor Bindings ---
+void RemoteControl::setTargetMotor(std::shared_ptr<IMotorAxis> motor) {
+    m_activeMotor = motor;
+}
+
+void RemoteControl::bindZaber(std::shared_ptr<Zaber> zaber) {
+    if (zaber) {
+        m_activeMotor = std::make_shared<ZaberAdapter>(zaber);
+    } else {
+        m_activeMotor.reset();
+    }
+}
+
+void RemoteControl::bindVelmex(std::shared_ptr<VelmexVXM> velmex) {
+    if (velmex) {
+        m_activeMotor = std::make_shared<VelmexAdapter>(velmex);
+    } else {
+        m_activeMotor.reset();
+    }
+}
+
+void RemoteControl::clearTargetMotor() {
+    m_activeMotor.reset();
+}
+
+// --- Direct Delegation to Active Adapter ---
+void RemoteControl::moveRelative(int axis, int distance) {
+    if (m_activeMotor) m_activeMotor->moveRelative(axis, distance);
+}
+
+void RemoteControl::moveAbsolute(int axis, int position) {
+    if (m_activeMotor) m_activeMotor->moveAbsolute(axis, position);
+}
+
+void RemoteControl::setSpeed(int axis, int speed) {
+    if (m_activeMotor) m_activeMotor->setSpeed(axis, speed);
+}
+
+void RemoteControl::indexIncremental(int axis, int steps) {
+    if (m_activeMotor) m_activeMotor->indexIncremental(axis, steps);
+}
+
+void RemoteControl::stop(int axis) {
+    if (m_activeMotor) m_activeMotor->stop(axis);
+}
+
+// --- Dynamic Pad Motion Command Processing ---
+void RemoteControl::processMotionCommands(int stepDistance) {
+    if (!connected || !m_activeMotor) return;
+
+    if (isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_UP)) {
+        moveRelative(1, stepDistance);
+    } else if (isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_DOWN)) {
+        moveRelative(1, -stepDistance);
+    }
+
+    if (isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) {
+        moveRelative(2, stepDistance);
+    } else if (isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_LEFT)) {
+        moveRelative(2, -stepDistance);
+    }
+
+    if (isButtonPressed(SDL_GAMEPAD_BUTTON_EAST)) {
+        stop(0);
+    }
 }
