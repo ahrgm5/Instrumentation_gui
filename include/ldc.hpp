@@ -1,13 +1,14 @@
 #pragma once
-#include <instrument.hpp>
+#include "instrument.hpp"
 #include <string>
 
 class Ldc502 : public Instrument {
 public:
-    static ChannelSettings defaultSettings();
+    // Override the base class virtual defaultSettings() function
+    ChannelSettings defaultSettings() const override;
 
     explicit Ldc502(ViSession defaultRM);
-    Ldc502(ViSession defaultRM, const std::string& resourceName, const ChannelSettings& settings = defaultSettings());
+    Ldc502(ViSession defaultRM, const std::string& resourceName, const ChannelSettings& settings = {});
 
     ~Ldc502() override = default;
 

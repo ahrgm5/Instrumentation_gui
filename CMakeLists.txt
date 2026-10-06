@@ -67,6 +67,8 @@ set(PROJECT_SOURCES
 
 
 
+
+
     # Hardware & Instrumentation Drivers
     src/ipg.cpp
     src/vrm.cpp
@@ -75,6 +77,7 @@ set(PROJECT_SOURCES
     src/remoteControl.cpp
     src/zaber.cpp
     src/ldc.cpp
+
 
 
 )
@@ -86,6 +89,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
 qt_add_executable(InstrumentationApp
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
+
     )
     qt_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
 else()

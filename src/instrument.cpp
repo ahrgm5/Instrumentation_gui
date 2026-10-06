@@ -8,14 +8,11 @@ Instrument::Instrument(ViSession defaultRM)
     : m_defaultRM(defaultRM), m_session(VI_NULL), m_interface(VisaInterface::Unknown), m_isOpen(false) {
 }
 
-Instrument::Instrument(ViSession defaultRM, const std::string& resourceName, ViUInt32 timeoutMs)
-    : Instrument(defaultRM) {
-    open(resourceName, timeoutMs);
-}
-
 Instrument::Instrument(ViSession defaultRM, const std::string& resourceName, const ChannelSettings& settings)
-    : Instrument(defaultRM) {
-    open(resourceName, settings);
+    : m_defaultRM(defaultRM) {
+    if (!resourceName.empty()) {
+        open(resourceName, settings);
+    }
 }
 
 Instrument::~Instrument() {
@@ -27,7 +24,8 @@ Instrument::Instrument(Instrument&& other) noexcept
     m_session(other.m_session),
     m_resourceName(std::move(other.m_resourceName)),
     m_interface(other.m_interface),
-    m_isOpen(other.m_isOpen) {
+    m_isOpen(other.m_isOpen),
+    m_writeTermination(std::move(other.m_writeTermination)) {
     other.m_session = VI_NULL;
     other.m_isOpen = false;
     other.m_interface = VisaInterface::Unknown;
@@ -41,6 +39,7 @@ Instrument& Instrument::operator=(Instrument&& other) noexcept {
         m_resourceName = std::move(other.m_resourceName);
         m_interface = other.m_interface;
         m_isOpen = other.m_isOpen;
+        m_writeTermination = std::move(other.m_writeTermination);
 
         other.m_session = VI_NULL;
         other.m_isOpen = false;
@@ -94,9 +93,10 @@ void Instrument::write(const std::string& command) {
     if (!m_isOpen) throw std::runtime_error("Cannot write: VISA session is closed.");
 
     std::string cmd = command;
-    if (cmd.empty() || cmd.back() != '\n') {
-        cmd += "\n";
+    while (!cmd.empty() && (cmd.back() == '\r' || cmd.back() == '\n')) {
+        cmd.pop_back();
     }
+    cmd += m_writeTermination;
 
     ViUInt32 bytesWritten = 0;
     ViStatus status = viWrite(
@@ -194,6 +194,7 @@ void Instrument::setAttribute(ViAttr attribute, ViAttrState value, const std::st
 
 void Instrument::applySettings(const ChannelSettings& settings) {
     setTimeout(settings.timeoutMs);
+    m_writeTermination = settings.writeTermination;
 
     if (settings.terminationCharacter) {
         setAttribute(VI_ATTR_TERMCHAR, static_cast<ViAttrState>(*settings.terminationCharacter), "Set termination character failed");

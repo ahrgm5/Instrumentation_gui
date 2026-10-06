@@ -1,11 +1,11 @@
 #include "arroyo.hpp"
 #include <string>
-#include <stdexcept>
 
-ChannelSettings Arroyo5240::defaultSettings() {
+ChannelSettings Arroyo5240::defaultArroyoSettings() {
     ChannelSettings settings;
     settings.timeoutMs = 2000;
     settings.terminationCharacter = '\n';
+    settings.writeTermination = "\n";
     settings.baudRate = 38400;
     settings.dataBits = 8;
     settings.parity = VI_ASRL_PAR_NONE;
@@ -23,11 +23,11 @@ Arroyo5240::Arroyo5240(ViSession defaultRM, const std::string& resourceName, con
 }
 
 std::string Arroyo5240::getIdentity() {
-    return query("*IDN?");
+    return trim(query("*IDN?"));
 }
 
 std::string Arroyo5240::beep() {
-    return query("BEEP?");
+    return trim(query("BEEP?"));
 }
 
 void Arroyo5240::setTemperatureSetpoint(double tempC) {
@@ -35,13 +35,11 @@ void Arroyo5240::setTemperatureSetpoint(double tempC) {
 }
 
 double Arroyo5240::getTemperatureSetpoint() {
-    std::string response = query("TEC:SET:T?");
-    return std::stod(response);
+    return queryAs<double>("TEC:SET:T?");
 }
 
 double Arroyo5240::getCurrentTemperature() {
-    std::string response = query("TEC:T?");
-    return std::stod(response);
+    return queryAs<double>("TEC:T?");
 }
 
 void Arroyo5240::setOutputEnable(bool enable) {
@@ -49,6 +47,5 @@ void Arroyo5240::setOutputEnable(bool enable) {
 }
 
 bool Arroyo5240::isOutputEnabled() {
-    std::string response = query("TEC:OUT?");
-    return std::stoi(response) != 0;
+    return queryAs<int>("TEC:OUT?") != 0;
 }

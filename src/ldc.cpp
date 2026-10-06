@@ -1,8 +1,8 @@
-#include "ldc.hpp"
+#include <ldc.hpp>
 #include <visa.h>
-#include <stdexcept>
 
-ChannelSettings Ldc502::defaultSettings() {
+
+ChannelSettings Ldc502::defaultSettings() const {
     ChannelSettings settings;
     settings.timeoutMs = 3000;
     settings.terminationCharacter = '\n'; // Standard SCPI terminator
@@ -22,25 +22,25 @@ std::string Ldc502::getIdentity() {
 }
 
 void Ldc502::setLaserOutput(bool enable) {
-    write(enable ? "LASer:OUTput ON" : "LASer:OUTput OFF");
+    write(enable ? "LDON 0" : "LDON 1");
 }
 
 bool Ldc502::isLaserOutputEnabled() {
-    std::string response = query("LASer:OUTput?");
+    std::string response = query("LDON?");
     return (response.find("1") != std::string::npos || response.find("ON") != std::string::npos);
 }
 
 void Ldc502::setCurrentSetpoint(double currentmA) {
-    write("LASer:LDI " + std::to_string(currentmA));
+    write("SILD " + std::to_string(currentmA));
 }
 
 double Ldc502::getCurrentSetpoint() {
-    std::string response = query("LASer:SET:LDI?");
+    std::string response = query("SILD?");
     return std::stod(response);
 }
 
 double Ldc502::getActualCurrent() {
-    std::string response = query("LASer:LDI?");
+    std::string response = query("RILD?");
     return std::stod(response);
 }
 

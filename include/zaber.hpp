@@ -1,56 +1,62 @@
 #pragma once
 
-#include <instrument.hpp>
+#include "instrument.hpp"
 #include <string>
 #include <cstdint>
-#include <utility>
+#include <vector>
 
-// Defines a specific motor target (Supports both MCA channels and DMQ standalone stages)
-struct AxisTarget {
-    uint8_t device = 1; // Device address on the daisy chain
-    uint8_t axis = 0; // 0 for standalone (DMQ), 1..N for multi-axis controller (MCA)
-};
-
-// Example Configuration:
-// - Motors X1, X2, Y driven by 3-channel MCA (Device 1, Axes 1, 2, 3)
-// - Motor Z is a standalone DMQ stage (Device 2)
-struct GantryConfig {
-    AxisTarget x1{ 1, 1 }; // MCA Axis 1
-    AxisTarget x2{ 1, 2 }; // MCA Axis 2
-    AxisTarget y{ 1, 3 }; // MCA Axis 3
-    AxisTarget z{ 2, 0 }; // DMQ Stage (Standalone Device 2)
+struct ZaberAxisLimits {
+    int index;
+    int32_t minPosition;
+    int32_t maxPosition;
+    int32_t resolution;
 };
 
 class Zaber : public Instrument {
 public:
+    static ChannelSettings defaultZaberSettings();
+
     explicit Zaber(ViSession defaultRM);
-    Zaber(ViSession defaultRM, const std::string& resourceName, ViUInt32 timeoutMs = 5000);
-    Zaber(ViSession defaultRM, const std::string& resourceName, const ChannelSettings& settings);
+    Zaber(
+        ViSession defaultRM,
+        const std::string& resourceName,
+        const ChannelSettings& settings = defaultZaberSettings()
+    );
 
-    bool open(const std::string& resourceName, ViUInt32 timeoutMs = 5000) override;
-    bool open(const std::string& resourceName, const ChannelSettings& settings) override;
+    ~Zaber() override = default;
 
-    // Target-based Commands (Works for MCA and DMQ seamlessly)
-    void home(const AxisTarget& target);
-    void moveAbsolute(int32_t microsteps, const AxisTarget& target);
-    void moveRelative(int32_t microsteps, const AxisTarget& target);
-    void stop(const AxisTarget& target);
-    int32_t getPosition(const AxisTarget& target);
+    ChannelSettings defaultSettings() const override {
+        return defaultZaberSettings();
+    }
 
-    // 4-Motor System High-Level API
-    void setGantryConfig(const GantryConfig& config);
-    void homeAll();
-    void moveX(int32_t microsteps); // Synchronized dual X move (X1 + X2)
-    void moveY(int32_t microsteps);
-    void moveZ(int32_t microsteps);
+    virtual bool open(const std::string& resourceName, const ChannelSettings& settings = defaultZaberSettings()) {
+        return Instrument::open(resourceName, settings);
+    }
 
-    std::pair<int32_t, int32_t> getXPositions();
+    // Direct Motion & Query Commands
+    void home(int index);
+    void moveAbsolute(int index, int32_t microsteps);
+    void moveRelative(int index, int32_t microsteps);
+    void stop(int index);
 
-    // Raw ASCII Dispatcher
-    std::string sendCommand(uint8_t deviceAddress, const std::string& command, uint8_t axis = 0);
+    // Queries position for all devices (index 0) and displays output in terminal
+    int32_t getPosition(int numDevices = 4);
+
+    // Queries position for a specific device index
+    int32_t getPositionForDevice(int index);
+
+    // Motion Synchronization Helpers
+    bool isIdle(int index);
+    void waitUntilIdle(int index, int pollIntervalMs = 100, int timeoutSeconds = 30);
+
+    // Settings & Limits Queries
+    int32_t getLimitMax(int index);
+    int32_t getLimitMin(int index);
+    int32_t getResolution(int index);
+
+    std::vector<ZaberAxisLimits> queryLimitsForAllDevices(int numDevices);
 
 private:
-    GantryConfig m_cfg;
-    static ChannelSettings getDefaultZaberSettings(ViUInt32 timeoutMs);
-    std::string formatCommand(uint8_t deviceAddress, uint8_t axis, const std::string& command) const;
+    std::string sendCommand(int index, const std::string& command);
+    int32_t parseSettingResponse(const std::string& response);
 };
