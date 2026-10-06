@@ -22,6 +22,9 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+signals:
+    void executeSequenceRequested(const QString& sequenceKey, const QString& sequenceDisplayName);
+
 private slots:
     void onStationSelected(int index);
     void toggleStreaming();
@@ -29,7 +32,7 @@ private slots:
     void checkCameraConnection();
     void checkDeviceConnections();
     void loadStationConfig(const QString& iniFilePath);
-    void onExecuteRoutineClicked();
+    void onExecuteSequenceClicked();
 
 private:
     void initCamera();
@@ -56,8 +59,8 @@ private:
     QElapsedTimer m_reconnectElapsedTimer;
     QString m_lastLoggedInputs;
 
-    // --- Hardware & Station Configuration ---
+    // Hardware & Station Configuration
     VisaResourceManager m_vrm;
     std::map<QString, std::shared_ptr<Instrument>> m_stationDevices;
-    std::map<QString, QString> m_deviceResourceStrings; // Store VISA resource addresses for reconnection attempts
+    std::map<QString, QString> m_deviceResourceStrings;
 };

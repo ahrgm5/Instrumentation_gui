@@ -8,7 +8,6 @@
 #include <QFileInfo>
 #include <memory>
 #include <unordered_map>
-#include "lsrWldRoutine.hpp"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow), m_isStreaming(false)
@@ -32,8 +31,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_btnToggleStream, &QPushButton::clicked, this, &MainWindow::toggleStreaming);
 
-    // --- Connect Routine Execution Button ---
-    connect(ui->btnExecuteRoutine, &QPushButton::clicked, this, &MainWindow::onExecuteRoutineClicked);
+    // --- Connect Execution Button ---
+    connect(ui->btnExecuteSequence, &QPushButton::clicked, this, &MainWindow::onExecuteSequenceClicked);
 
     // --- Initialize Camera (Non-blocking if not plugged in yet) ---
     initCamera();
@@ -112,7 +111,7 @@ void MainWindow::onStationSelected(int index)
         loadStationConfig(iniPath);
     } else {
         ui->treeWidget->clear();
-        ui->comboRoutine->clear();
+        ui->comboSequence->clear();
         m_stationDevices.clear();
         m_deviceResourceStrings.clear();
     }
@@ -123,7 +122,7 @@ void MainWindow::loadStationConfig(const QString& iniFilePath)
     QSettings settings(iniFilePath, QSettings::IniFormat);
 
     ui->treeWidget->clear();
-    ui->comboRoutine->clear();
+    ui->comboSequence->clear();
     m_stationDevices.clear();
     m_deviceResourceStrings.clear();
 
@@ -166,8 +165,8 @@ void MainWindow::loadStationConfig(const QString& iniFilePath)
     QStringList generalKeys = settings.childKeys();
 
     for (const QString& key : generalKeys) {
-        QString routineDisplayName = settings.value(key).toString();
-        ui->comboRoutine->addItem(routineDisplayName, key);
+        QString sequenceDisplayName = settings.value(key).toString();
+        ui->comboSequence->addItem(sequenceDisplayName, key);
     }
     settings.endGroup();
 
@@ -189,7 +188,6 @@ void MainWindow::checkDeviceConnections()
 
             bool isConnected = false;
 
-            // 1. Check if device is currently open and communicating
             if (instrument && instrument->isOpen()) {
                 try {
                     std::string idnResponse = instrument->query("*IDN?", 500);
@@ -199,12 +197,10 @@ void MainWindow::checkDeviceConnections()
                 }
             }
 
-            // 2. Hot-plug logic: If disconnected, attempt to re-open connection
             if (!isConnected && instrument) {
                 QString resourceString = m_deviceResourceStrings[devName];
                 if (!resourceString.isEmpty()) {
                     try {
-                        // Short 500ms timeout so checking disconnected ports won't block the UI thread
                         isConnected = instrument->open(resourceString.toStdString(), 500);
                     } catch (...) {
                         isConnected = false;
@@ -212,7 +208,6 @@ void MainWindow::checkDeviceConnections()
                 }
             }
 
-            // 3. Update status indicator in tree widget when state changes
             QString statusText = isConnected ? "● Connected" : "● Disconnected";
             QColor statusColor = isConnected ? QColor("#2ecc71") : QColor("#e74c3c");
 
@@ -230,40 +225,22 @@ void MainWindow::checkDeviceConnections()
     }
 }
 
-void MainWindow::onExecuteRoutineClicked()
+void MainWindow::onExecuteSequenceClicked()
 {
-    int index = ui->comboRoutine->currentIndex();
+    int index = ui->comboSequence->currentIndex();
     if (index < 0) return;
 
-    QString routineKey = ui->comboRoutine->itemData(index).toString();
-    QString routineDisplayName = ui->comboRoutine->currentText();
+    QString sequenceKey = ui->comboSequence->itemData(index).toString();
+    QString sequenceDisplayName = ui->comboSequence->currentText();
 
-    try {
-        std::unique_ptr<IRoutine> routineToRun = nullptr;
-
-        if (routineKey == "Routine1" || routineDisplayName == "Laser Weld") {
-            routineToRun = std::make_unique<lsrWldRoutine>();
-        }
-
-        if (!routineToRun) {
-            QMessageBox::warning(this, "Unknown Routine", "No implementation found for the selected routine.");
-            return;
-        }
-
-        std::unordered_map<std::string, std::shared_ptr<Instrument>> routineDevices;
-        for (const auto& [key, instrument] : m_stationDevices) {
-            routineDevices[key.toStdString()] = instrument;
-        }
-
-        qDebug() << "Executing routine:" << routineDisplayName;
-
-        routineToRun->execute(routineDevices);
-
-        QMessageBox::information(this, "Success", "Routine completed successfully.");
-
-    } catch (const std::exception& e) {
-        QMessageBox::critical(this, "Routine Execution Error", e.what());
+    if (sequenceKey.isEmpty()) {
+        QMessageBox::warning(this, "Select Sequence", "Please select a valid sequence.");
+        return;
     }
+
+    qDebug() << "Sequence execution requested:" << sequenceDisplayName << "(" << sequenceKey << ")";
+
+    emit executeSequenceRequested(sequenceKey, sequenceDisplayName);
 }
 
 void MainWindow::initCamera()
