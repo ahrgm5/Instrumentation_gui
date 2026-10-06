@@ -1,4 +1,4 @@
-#pragma once 
+#pragma once
 
 #include <visa.h>
 #include <optional>
@@ -7,57 +7,14 @@
 #include <sstream>
 #include <algorithm>
 #include <stdexcept>
-
-enum class VisaInterface {
-    Unknown,
-    Gpib,
-    Serial,
-    Usb,
-    TcpipInstrument,
-    TcpipSocket,
-    Vxi,
-    Pxi
-};
-
-enum class ChannelAttribute {
-    Timeout,
-    TerminationCharacter,
-    SerialBaudRate,
-    SerialDataBits,
-    SerialParity,
-    SerialStopBits,
-    SerialFlowControl,
-    TcpipNoDelay,
-    TcpipKeepAlive
-};
-
-struct ChannelSettings {
-    ViUInt32 timeoutMs = 5000;
-
-    std::optional<ViUInt8> terminationCharacter; // Read termination character
-    std::string writeTermination = "\n";         // String appended to every write command
-
-    // ASRL (serial) resources
-    std::optional<ViUInt32> baudRate;
-    std::optional<ViUInt16> dataBits;
-    std::optional<ViUInt16> parity;       // VI_ASRL_PAR_*
-    std::optional<ViUInt16> stopBits;     // VI_ASRL_STOP_*
-    std::optional<ViUInt16> flowControl;  // VI_ASRL_FLOW_*
-
-    // TCPIP...::SOCKET resources
-    std::optional<bool> tcpNoDelay;
-    std::optional<bool> tcpKeepAlive;
-
-    ChannelSettings() = default;
-    ChannelSettings(ViUInt32 timeout) : timeoutMs(timeout) {}
-};
+#include "vrm.hpp"
 
 class Instrument {
 public:
     // Unopened session constructor
     explicit Instrument(ViSession defaultRM);
 
-    // Primary constructor: safely accepts concrete settings evaluated BEFORE base construction
+    // Primary constructor: safely accepts concrete settings
     Instrument(ViSession defaultRM, const std::string& resourceName, const ChannelSettings& settings = {});
 
     virtual ~Instrument();
@@ -68,15 +25,14 @@ public:
     Instrument(Instrument&& other) noexcept;
     Instrument& operator=(Instrument&& other) noexcept;
 
-    // Session Management
+    // Session Management (Restored to return bool for subclass override compatibility)
     virtual bool open(const std::string& resourceName, const ChannelSettings& settings);
     virtual bool open(const std::string& resourceName, ViUInt32 timeoutMs);
-    virtual void close();
+    void close(); // Non-virtual to prevent virtual call in destructor
     bool isOpen() const { return m_isOpen; }
 
     VisaInterface interfaceType() const { return m_interface; }
     std::vector<ChannelAttribute> supportedAttributes() const;
-    static VisaInterface parseInterface(const std::string& resourceName);
 
     // Communication
     virtual void write(const std::string& command);

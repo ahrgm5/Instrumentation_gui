@@ -60,7 +60,7 @@ bool Instrument::open(const std::string& resourceName, const ChannelSettings& se
     }
 
     m_resourceName = resourceName;
-    m_interface = parseInterface(resourceName);
+    m_interface = VisaResourceManager::parseInterface(resourceName);
     ViStatus status = viOpen(m_defaultRM, const_cast<char*>(m_resourceName.c_str()), VI_NULL, VI_NULL, &m_session);
 
     if (status < VI_SUCCESS) {
@@ -104,7 +104,7 @@ void Instrument::write(const std::string& command) {
         reinterpret_cast<ViBuf>(const_cast<char*>(cmd.c_str())),
         static_cast<ViUInt32>(cmd.size()),
         &bytesWritten
-    );
+        );
     checkStatus(status, "Write command failed");
 }
 
@@ -119,7 +119,7 @@ std::string Instrument::read(size_t bufferSize) {
         reinterpret_cast<ViPBuf>(buffer.data()),
         static_cast<ViUInt32>(buffer.size() - 1),
         &bytesRead
-    );
+        );
     checkStatus(status, "Read response failed");
 
     buffer[bytesRead] = '\0';
@@ -145,37 +145,13 @@ void Instrument::setReadTermination(char character) {
     setAttribute(VI_ATTR_TERMCHAR_EN, VI_TRUE, "Failed to enable VISA termination character");
 }
 
-VisaInterface Instrument::parseInterface(const std::string& resourceName) {
-    const auto separator = resourceName.find("::");
-    std::string interfaceName = resourceName.substr(0, separator);
-    std::transform(interfaceName.begin(), interfaceName.end(), interfaceName.begin(),
-        [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-
-    const auto startsWith = [&interfaceName](const char* prefix) {
-        return interfaceName.rfind(prefix, 0) == 0;
-        };
-    if (startsWith("ASRL")) return VisaInterface::Serial;
-    if (startsWith("GPIB")) return VisaInterface::Gpib;
-    if (startsWith("USB")) return VisaInterface::Usb;
-    if (startsWith("VXI")) return VisaInterface::Vxi;
-    if (startsWith("PXI")) return VisaInterface::Pxi;
-    if (startsWith("TCPIP")) {
-        std::string upper = resourceName;
-        std::transform(upper.begin(), upper.end(), upper.begin(),
-            [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-        return upper.size() >= 8 && upper.compare(upper.size() - 8, 8, "::SOCKET") == 0
-            ? VisaInterface::TcpipSocket : VisaInterface::TcpipInstrument;
-    }
-    return VisaInterface::Unknown;
-}
-
 std::vector<ChannelAttribute> Instrument::supportedAttributes() const {
     std::vector<ChannelAttribute> attributes{ ChannelAttribute::Timeout, ChannelAttribute::TerminationCharacter };
     if (m_interface == VisaInterface::Serial) {
         attributes.insert(attributes.end(), {
-            ChannelAttribute::SerialBaudRate, ChannelAttribute::SerialDataBits,
-            ChannelAttribute::SerialParity, ChannelAttribute::SerialStopBits,
-            ChannelAttribute::SerialFlowControl });
+                                              ChannelAttribute::SerialBaudRate, ChannelAttribute::SerialDataBits,
+                                              ChannelAttribute::SerialParity, ChannelAttribute::SerialStopBits,
+                                              ChannelAttribute::SerialFlowControl });
     }
     if (m_interface == VisaInterface::TcpipSocket) {
         attributes.insert(attributes.end(), { ChannelAttribute::TcpipNoDelay, ChannelAttribute::TcpipKeepAlive });
@@ -205,7 +181,7 @@ void Instrument::applySettings(const ChannelSettings& settings) {
         if (!supports(attribute)) {
             throw std::invalid_argument(std::string(setting) + " is not supported by this VISA resource string.");
         }
-        };
+    };
     if (settings.baudRate) {
         require(ChannelAttribute::SerialBaudRate, "baudRate");
         setAttribute(VI_ATTR_ASRL_BAUD, static_cast<ViAttrState>(*settings.baudRate), "Set serial baud rate failed");
