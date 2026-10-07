@@ -19,15 +19,22 @@ ChannelSettings Zaber::defaultZaberSettings() {
 }
 
 Zaber::Zaber(ViSession defaultRM)
-    : Instrument(defaultRM) {
-}
+    : Instrument(defaultRM) {}
 
 Zaber::Zaber(ViSession defaultRM, const std::string& resourceName, const ChannelSettings& settings)
-    : Instrument(defaultRM, resourceName, settings) {
+    : Instrument(defaultRM, resourceName, settings) {}
+
+bool Zaber::open(const std::string& resourceName, const ChannelSettings& settings) {
+    ChannelSettings effectiveSettings = settings;
+    if (!effectiveSettings.baudRate.has_value()) {
+        effectiveSettings = defaultZaberSettings();
+        effectiveSettings.timeoutMs = settings.timeoutMs;
+    }
+    return Instrument::open(resourceName, effectiveSettings);
 }
 
-std::string Zaber::sendCommand(int index, const std::string& command) {
-    std::string cmd = "/" + std::to_string(index) + " " + command;
+std::string Zaber::sendCommand(int deviceAddress, const std::string& command) {
+    std::string cmd = "/" + std::to_string(deviceAddress) + " " + command;
     std::string response = query(cmd);
 
     if (response.find(" RJ ") != std::string::npos) {
@@ -35,6 +42,11 @@ std::string Zaber::sendCommand(int index, const std::string& command) {
     }
 
     return response;
+}
+
+void Zaber::writeCommand(int deviceAddress, const std::string& command) {
+    std::string cmd = "/" + std::to_string(deviceAddress) + " " + command;
+    write(cmd);
 }
 
 int32_t Zaber::parseSettingResponse(const std::string& response) {
@@ -45,15 +57,11 @@ int32_t Zaber::parseSettingResponse(const std::string& response) {
     int32_t parsedValue = 0;
     bool foundNumber = false;
 
-    // Scan through response tokens to isolate numeric data and ignore status flags (e.g. IDLE, FE, OK)
     while (iss >> token) {
         try {
             parsedValue = std::stol(token);
             foundNumber = true;
-        }
-        catch (...) {
-            // Skip warning codes or status labels
-        }
+        } catch (...) {}
     }
 
     if (!foundNumber) {
@@ -63,20 +71,24 @@ int32_t Zaber::parseSettingResponse(const std::string& response) {
     return parsedValue;
 }
 
-void Zaber::home(int index) {
-    sendCommand(index, "home");
+void Zaber::home(int deviceAddress, int axisNumber) {
+    sendCommand(deviceAddress, std::to_string(axisNumber) + " home");
 }
 
-void Zaber::moveAbsolute(int index, int32_t microsteps) {
-    sendCommand(index, "move abs " + std::to_string(microsteps));
+void Zaber::moveAbsolute(int deviceAddress, int axisNumber, int32_t microsteps) {
+    std::string cmd = std::to_string(axisNumber) + " move abs " + std::to_string(microsteps);
+    sendCommand(deviceAddress, cmd);
 }
 
-void Zaber::moveRelative(int index, int32_t microsteps) {
-    sendCommand(index, "move rel " + std::to_string(microsteps));
+void Zaber::moveRelative(int deviceAddress, int axisNumber, int32_t microsteps) {
+    // Correct Zaber ASCII Syntax for Daisy-Chained Multi-Axis Devices:
+    // Format: "/<device> <axis> move rel <microsteps>" -> e.g. "/1 1 move rel 5000"
+    std::string cmd = std::to_string(axisNumber) + " move rel " + std::to_string(microsteps);
+    sendCommand(deviceAddress, cmd);
 }
 
-void Zaber::stop(int index) {
-    sendCommand(index, "stop");
+void Zaber::stop(int deviceAddress, int axisNumber) {
+    writeCommand(deviceAddress, std::to_string(axisNumber) + " stop");
 }
 
 int32_t Zaber::getPosition(int numDevices) {
@@ -85,13 +97,12 @@ int32_t Zaber::getPosition(int numDevices) {
 
     for (int devIndex = 1; devIndex <= numDevices; ++devIndex) {
         try {
-            int32_t pos = parseSettingResponse(sendCommand(devIndex, "get pos"));
+            int32_t pos = getPositionForAxis(devIndex, 1);
             std::cout << "Device " << devIndex << " Position: " << pos << " microsteps\n";
             if (devIndex == 1) {
                 firstDevicePos = pos;
             }
-        }
-        catch (const std::exception& ex) {
+        } catch (const std::exception& ex) {
             std::cout << "Device " << devIndex << " Position: [Error: " << ex.what() << "]\n";
         }
     }
@@ -103,41 +114,48 @@ int32_t Zaber::getPositionForDevice(int index) {
     if (index == 0) {
         return getPosition();
     }
-    return parseSettingResponse(sendCommand(index, "get pos"));
+    return getPositionForAxis(index, 1);
 }
 
-bool Zaber::isIdle(int index) {
-    std::string response = sendCommand(index, "get status");
+int32_t Zaber::getPositionForAxis(int deviceAddress, int axisNumber) {
+    if (!isOpen()) return 0;
+    std::string cmd = std::to_string(axisNumber) + " get pos";
+    std::string response = sendCommand(deviceAddress, cmd);
+    return parseSettingResponse(response);
+}
+
+bool Zaber::isIdle(int deviceAddress, int axisNumber) {
+    std::string response = sendCommand(deviceAddress, std::to_string(axisNumber) + " get status");
     return (response.find("idle") != std::string::npos || response.find("IDLE") != std::string::npos);
 }
 
-void Zaber::waitUntilIdle(int index, int pollIntervalMs, int timeoutSeconds) {
+void Zaber::waitUntilIdle(int deviceAddress, int axisNumber, int pollIntervalMs, int timeoutSeconds) {
     auto start = std::chrono::steady_clock::now();
 
-    while (!isIdle(index)) {
+    while (!isIdle(deviceAddress, axisNumber)) {
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::steady_clock::now() - start
-        ).count();
+                           std::chrono::steady_clock::now() - start
+                           ).count();
 
         if (elapsed >= timeoutSeconds) {
-            throw std::runtime_error("Timeout waiting for Zaber axis " +
-                std::to_string(index) + " to become idle.");
+            throw std::runtime_error("Timeout waiting for Zaber device " + std::to_string(deviceAddress) +
+                                     " axis " + std::to_string(axisNumber) + " to become idle.");
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(pollIntervalMs));
     }
 }
 
-int32_t Zaber::getLimitMax(int index) {
-    return parseSettingResponse(sendCommand(index, "get limit.max"));
+int32_t Zaber::getLimitMax(int deviceAddress, int axisNumber) {
+    return parseSettingResponse(sendCommand(deviceAddress, std::to_string(axisNumber) + " get limit.max"));
 }
 
-int32_t Zaber::getLimitMin(int index) {
-    return parseSettingResponse(sendCommand(index, "get limit.min"));
+int32_t Zaber::getLimitMin(int deviceAddress, int axisNumber) {
+    return parseSettingResponse(sendCommand(deviceAddress, std::to_string(axisNumber) + " get limit.min"));
 }
 
-int32_t Zaber::getResolution(int index) {
-    return parseSettingResponse(sendCommand(index, "get resolution"));
+int32_t Zaber::getResolution(int deviceAddress, int axisNumber) {
+    return parseSettingResponse(sendCommand(deviceAddress, std::to_string(axisNumber) + " get resolution"));
 }
 
 std::vector<ZaberAxisLimits> Zaber::queryLimitsForAllDevices(int numDevices) {
@@ -147,17 +165,63 @@ std::vector<ZaberAxisLimits> Zaber::queryLimitsForAllDevices(int numDevices) {
         try {
             ZaberAxisLimits axis;
             axis.index = index;
-            axis.minPosition = getLimitMin(index);
-            axis.maxPosition = getLimitMax(index);
-            axis.resolution = getResolution(index);
+            axis.minPosition = getLimitMin(index, 1);
+            axis.maxPosition = getLimitMax(index, 1);
+            axis.resolution = getResolution(index, 1);
 
             allLimits.push_back(axis);
-        }
-        catch (const std::exception& ex) {
+        } catch (const std::exception& ex) {
             std::cerr << "Warning: Could not query limits for axis index " << index
-                << " (" << ex.what() << ")\n";
+                      << " (" << ex.what() << ")\n";
         }
     }
 
     return allLimits;
+}
+
+// --- Zaber Adapter Implementation ---
+ZaberAdapter::ZaberAdapter(std::shared_ptr<Zaber> zaber) : m_zaber(std::move(zaber)) {}
+
+void ZaberAdapter::moveRelative(int axis, int distance) {
+    if (!m_zaber || !m_zaber->isOpen()) return;
+
+    // Daisy-chain routing map:
+    // Axis 1 = Device /1 (X-MCA)
+    // Axis 2 = Device /2 (LSQ)
+    // Axis 3 = Device /3 (DMQ-1)
+    // Axis 4 = Device /4 (DMQ-2)
+    int deviceAddress = axis;
+    int axisNumber = 1;
+
+    m_zaber->moveRelative(deviceAddress, axisNumber, distance);
+}
+
+void ZaberAdapter::moveAbsolute(int axis, int position) {
+    if (!m_zaber || !m_zaber->isOpen()) return;
+
+    int deviceAddress = axis;
+    int axisNumber = 1;
+
+    m_zaber->moveAbsolute(deviceAddress, axisNumber, position);
+}
+
+void ZaberAdapter::stop(int axis) {
+    if (m_zaber && m_zaber->isOpen()) {
+        m_zaber->stop(axis, 1);
+    }
+}
+
+void ZaberAdapter::setSpeed(int axis, int speed) {
+    if (m_zaber && m_zaber->isOpen()) {
+        m_zaber->query("/" + std::to_string(axis) + " 1 set maxspeed " + std::to_string(speed));
+    }
+}
+
+void ZaberAdapter::indexIncremental(int axis, int steps) {
+    moveRelative(axis, steps);
+}
+
+int32_t ZaberAdapter::getPosition(int axis) {
+    if (!m_zaber || !m_zaber->isOpen()) return 0;
+    return m_zaber->getPositionForAxis(axis, 1);
 }

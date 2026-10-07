@@ -5,7 +5,9 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QTimer>
+#include <QTreeWidgetItem>
 #include <QElapsedTimer>
+#include <QMenu>
 #include <memory>
 #include <map>
 #include <ic4/ic4.h>
@@ -36,10 +38,12 @@ private slots:
     void loadStationConfig(const QString& iniFilePath);
     void onExecuteSequenceClicked();
     void onControllerTargetChanged(int index);
+    void onHomeTargetClicked(); // Slot for Home Button next to motor target dropdown
 
 private:
     void initCamera();
     void updateControllerTargetCombo();
+    void updateDeviceTreePositions();
 
     Ui::MainWindow *ui;
     QWidget *m_videoContainer;
@@ -67,4 +71,5 @@ private:
     VisaResourceManager m_vrm;
     std::map<QString, std::shared_ptr<Instrument>> m_stationDevices;
     std::map<QString, QString> m_deviceResourceStrings;
+    std::map<QString, std::map<int, QTreeWidgetItem*>> m_axisTreeItems;
 };

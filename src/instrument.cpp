@@ -92,6 +92,8 @@ void Instrument::close() {
 void Instrument::write(const std::string& command) {
     if (!m_isOpen) throw std::runtime_error("Cannot write: VISA session is closed.");
 
+    viFlush(m_session, VI_READ_BUF_DISCARD);
+
     std::string cmd = command;
     while (!cmd.empty() && (cmd.back() == '\r' || cmd.back() == '\n')) {
         cmd.pop_back();
