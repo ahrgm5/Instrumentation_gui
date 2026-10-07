@@ -1,4 +1,4 @@
-#include "zaber.hpp"
+#include <zaber.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <iostream>
@@ -156,27 +156,6 @@ int32_t Zaber::getLimitMin(int deviceAddress, int axisNumber) {
 
 int32_t Zaber::getResolution(int deviceAddress, int axisNumber) {
     return parseSettingResponse(sendCommand(deviceAddress, std::to_string(axisNumber) + " get resolution"));
-}
-
-std::vector<ZaberAxisLimits> Zaber::queryLimitsForAllDevices(int numDevices) {
-    std::vector<ZaberAxisLimits> allLimits;
-
-    for (int index = 1; index <= numDevices; ++index) {
-        try {
-            ZaberAxisLimits axis;
-            axis.index = index;
-            axis.minPosition = getLimitMin(index, 1);
-            axis.maxPosition = getLimitMax(index, 1);
-            axis.resolution = getResolution(index, 1);
-
-            allLimits.push_back(axis);
-        } catch (const std::exception& ex) {
-            std::cerr << "Warning: Could not query limits for axis index " << index
-                      << " (" << ex.what() << ")\n";
-        }
-    }
-
-    return allLimits;
 }
 
 // --- Zaber Adapter Implementation ---

@@ -36,7 +36,7 @@ public:
     void processMotionCommands(int stepDistance = 200);
 
 private:
-    SDL_Gamepad* controller;
-    bool connected;
+    SDL_Gamepad* m_controller;
+    bool m_connected;
     std::shared_ptr<IMotorAxis> m_activeMotor;
 };

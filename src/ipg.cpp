@@ -1,4 +1,4 @@
-#include "ipg.hpp"
+#include <ipg.hpp>
 #include <stdexcept>
 
 ChannelSettings ipgYLR::defaultSettings() {

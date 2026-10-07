@@ -4,25 +4,14 @@
 #include "imotoraxis.hpp"
 #include <string>
 #include <cstdint>
-#include <vector>
 #include <memory>
-
-struct ZaberAxisLimits {
-    int index;
-    int32_t minPosition;
-    int32_t maxPosition;
-    int32_t resolution;
-};
 
 class Zaber : public Instrument {
 public:
     static ChannelSettings defaultZaberSettings();
 
     explicit Zaber(ViSession defaultRM);
-    Zaber(
-        ViSession defaultRM,
-        const std::string& resourceName,
-        const ChannelSettings& settings = defaultZaberSettings()
+        Zaber(ViSession defaultRM,  const std::string& resourceName,    const ChannelSettings& settings = defaultZaberSettings()
         );
 
     ~Zaber() override = default;
@@ -56,8 +45,6 @@ public:
     int32_t getLimitMax(int deviceAddress, int axisNumber = 1);
     int32_t getLimitMin(int deviceAddress, int axisNumber = 1);
     int32_t getResolution(int deviceAddress, int axisNumber = 1);
-
-    std::vector<ZaberAxisLimits> queryLimitsForAllDevices(int numDevices);
 
 private:
     std::string sendCommand(int deviceAddress, const std::string& command);

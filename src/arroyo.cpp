@@ -1,4 +1,4 @@
-#include "arroyo.hpp"
+#include <arroyo.hpp>
 #include <string>
 
 ChannelSettings Arroyo5240::defaultArroyoSettings() {

@@ -1,29 +1,22 @@
-#ifndef VELMEX_HPP
-#define VELMEX_HPP
+#pragma once
 
 #include <string>
 #include <memory>
 #include <cstdint>
 #include <visa.h>
-#include "instrument.hpp"
-#include "imotoraxis.hpp"
+#include <instrument.hpp>
+#include <imotoraxis.hpp>
 
 class VelmexVXM : public Instrument {
 public:
     static ChannelSettings defaultVelmexSettings();
 
     explicit VelmexVXM(ViSession defaultRM);
-    VelmexVXM(
-        ViSession defaultRM,
-        const std::string& resourceName,
-        const ChannelSettings& settings = defaultVelmexSettings()
-        );
+    VelmexVXM(ViSession defaultRM,  const std::string& resourceName,    const ChannelSettings& settings = defaultVelmexSettings() );
 
     ~VelmexVXM() override = default;
 
-    ChannelSettings defaultSettings() const override {
-        return defaultVelmexSettings();
-    }
+    ChannelSettings defaultSettings() const override { return defaultVelmexSettings();    }
 
     bool open(const std::string& resourceName, const ChannelSettings& settings = defaultVelmexSettings()) override;
 
@@ -58,5 +51,3 @@ public:
 private:
     std::shared_ptr<VelmexVXM> m_velmex;
 };
-
-#endif // VELMEX_HPP

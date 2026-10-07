@@ -1,13 +1,13 @@
-#include "remoteControl.hpp"
+#include <remoteControl.hpp>
 #include <iostream>
 #include <cstdlib>
 
-RemoteControl::RemoteControl() : controller(nullptr), connected(false) {}
+RemoteControl::RemoteControl() : m_controller(nullptr), m_connected(false) {}
 
 RemoteControl::~RemoteControl() {
-    if (controller) {
-        SDL_CloseGamepad(controller);
-        controller = nullptr;
+    if (m_controller) {
+        SDL_CloseGamepad(m_controller);
+        m_controller = nullptr;
     }
     SDL_Quit();
 }
@@ -23,9 +23,9 @@ bool RemoteControl::initialize() {
         for (int i = 0; i < numJoysticks; ++i) {
             SDL_JoystickID jid = joysticks[i];
             if (SDL_IsGamepad(jid)) {
-                controller = SDL_OpenGamepad(jid);
-                if (controller) {
-                    connected = true;
+                m_controller = SDL_OpenGamepad(jid);
+                if (m_controller) {
+                    m_connected = true;
                     SDL_free(joysticks);
                     return true;
                 }
@@ -42,42 +42,42 @@ void RemoteControl::pollEvents() {
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
         case SDL_EVENT_QUIT:
-            connected = false;
+            m_connected = false;
             break;
 
         case SDL_EVENT_GAMEPAD_REMOVED:
-            if (controller) {
-                SDL_CloseGamepad(controller);
-                controller = nullptr;
+            if (m_controller) {
+                SDL_CloseGamepad(m_controller);
+                m_controller = nullptr;
             }
-            connected = false;
+            m_connected = false;
             break;
         }
     }
 }
 
 bool RemoteControl::isConnected() const {
-    return connected;
+    return m_connected;
 }
 
 std::string RemoteControl::getControllerName() const {
-    if (controller) {
-        const char* name = SDL_GetGamepadName(controller);
+    if (m_controller) {
+        const char* name = SDL_GetGamepadName(m_controller);
         return name ? name : "Unknown";
     }
     return "None";
 }
 
 bool RemoteControl::isButtonPressed(SDL_GamepadButton button) const {
-    if (controller && connected) {
-        return SDL_GetGamepadButton(controller, button);
+    if (m_controller && m_connected) {
+        return SDL_GetGamepadButton(m_controller, button);
     }
     return false;
 }
 
 Sint16 RemoteControl::getAxisValue(SDL_GamepadAxis axis) const {
-    if (controller && connected) {
-        return SDL_GetGamepadAxis(controller, axis);
+    if (m_controller && m_connected) {
+        return SDL_GetGamepadAxis(m_controller, axis);
     }
     return 0;
 }
@@ -130,7 +130,7 @@ void RemoteControl::stop(int axis) {
 
 // --- Dynamic Pad Motion Command Processing ---
 void RemoteControl::processMotionCommands(int stepDistance) {
-    if (!connected || !m_activeMotor) return;
+    if (!m_connected || !m_activeMotor) return;
 
     if (isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_UP)) {
         moveRelative(3, stepDistance);
