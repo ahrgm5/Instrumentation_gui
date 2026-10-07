@@ -7,7 +7,7 @@
 
 ChannelSettings Zaber::defaultZaberSettings() {
     ChannelSettings settings;
-    settings.timeoutMs = 5000;
+    settings.timeoutMs = 500;
     settings.terminationCharacter = '\n';
     settings.writeTermination = "\n";
     settings.baudRate = 115200;

@@ -132,13 +132,24 @@ void RemoteControl::stop(int axis) {
 void RemoteControl::processMotionCommands(int stepDistance) {
     if (!m_connected || !m_activeMotor) return;
 
-    if (isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_UP)) {
-        moveRelative(3, stepDistance);
-    } else if (isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_DOWN)) {
-        moveRelative(3, -stepDistance);
-    } else if (isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_LEFT)) {
-        moveRelative(4, -stepDistance);
+    if (isButtonPressed(SDL_GAMEPAD_BUTTON_SOUTH)) {
+    moveRelative(1, stepDistance);
+    } else if (isButtonPressed(SDL_GAMEPAD_BUTTON_EAST)) {
+    moveRelative(1, -stepDistance);
+
+    } else if (isButtonPressed(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) {
+    moveRelative(2, stepDistance);
+    } else if (isButtonPressed(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)) {
+    moveRelative(2, -stepDistance);
+
     } else if (isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) {
+        moveRelative(3, stepDistance);
+    } else if (isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_LEFT)) {
+        moveRelative(3, -stepDistance);
+    } else if (isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_DOWN)) {
+        moveRelative(4, -stepDistance);
+    } else if (isButtonPressed(SDL_GAMEPAD_BUTTON_DPAD_UP)) {
         moveRelative(4, stepDistance);
     }
+
 }

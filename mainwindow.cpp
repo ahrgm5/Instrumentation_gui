@@ -248,6 +248,7 @@ void MainWindow::loadStationConfig(const QString& iniFilePath)
 }
 
 
+
 void MainWindow::updateControllerTargetCombo()
 {
     ui->comboRemoteTarget->blockSignals(true);
@@ -265,16 +266,12 @@ void MainWindow::updateControllerTargetCombo()
 
     ui->comboRemoteTarget->blockSignals(false);
 
-    if (ui->comboRemoteTarget->count() > 1) {
-        ui->comboRemoteTarget->setCurrentIndex(1);
-        onControllerTargetChanged(1);
-    } else {
-        m_remoteController.clearTargetMotor();
-        ui->motorHomeBtn->setVisible(false);
-    }
+    // Keep index 0 ("-- Select Target Device --") selected by default
+    // so no device loads automatically upon startup or station selection.
+    ui->comboRemoteTarget->setCurrentIndex(0);
+    m_remoteController.clearTargetMotor();
+    ui->motorHomeBtn->setVisible(false);
 }
-
-
 
 void MainWindow::onControllerTargetChanged(int index)
 {
