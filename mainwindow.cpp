@@ -431,7 +431,7 @@ void MainWindow::pollControllerInput()
         ui->comboRemoteTarget->setEnabled(true);
 
         if (m_inputThrottleTimer.hasExpired(150)) {
-            m_remoteController.processMotionCommands(5000);
+            m_remoteController.processMotionCommands(50000);
             updateDeviceTreePositions();
             m_inputThrottleTimer.restart();
         }
